@@ -58,8 +58,8 @@ int w_log_printf(int verbosity, const char *fmt, ...);
 #define isr_wlog_n(format, ...)
 #endif
 
-#undef log_i
-#define log_i wlog_i
+// #undef log_i
+// #define log_i wlog_i
 
 
 #ifdef __cplusplus

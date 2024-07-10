@@ -17,8 +17,10 @@ extern "C"
 #define DEFAULT_DEBOUNCE_MS 60
 #define DEFAULT_VELOCITY 127
 
+#define NUM_BANKS 16
 #define NUM_VOICES 16
 #define NUM_NOTES 128
+
 
 #include "midi_in.h"
 #include "cJSON.h"
@@ -112,22 +114,6 @@ struct metadata_t {
     uint8_t do_station_mode;
     char station_ssid[30];
     char station_passphrase[30];
-    char voice_name_1[25];
-    char voice_name_2[25];
-    char voice_name_3[25];
-    char voice_name_4[25];
-    char voice_name_5[25];
-    char voice_name_6[25];
-    char voice_name_7[25];
-    char voice_name_8[25];
-    char voice_name_9[25];
-    char voice_name_10[25];
-    char voice_name_11[25];
-    char voice_name_12[25];
-    char voice_name_13[25];
-    char voice_name_14[25];
-    char voice_name_15[25];
-    char voice_name_16[25];
 };
 
 struct vol_t {
@@ -165,6 +151,16 @@ struct wav_file_t {
     size_t loop_start;
     size_t loop_end;
     int RFU;
+};
+struct bank_file_t {
+    char name[24];
+    uint8_t voice;
+    uint8_t channel;
+    int8_t transpose;
+    uint8_t pitchbend_range_up;
+    uint8_t pitchbend_range_down;
+    enum response_curve response_curve;
+    bool polyphonic;
 };
 
 struct firmware_t {
@@ -379,6 +375,9 @@ char *print_config_json();
 void clean_up_rack_directory(void);
 void reset_emmc(void);
 void delete_firmware(char index);
+void updateBankConfig(char *json);
+void read_bank_lut_from_disk(void);
+struct bank_file_t *get_bank_lut(void);
 
 #ifdef __cplusplus
 }

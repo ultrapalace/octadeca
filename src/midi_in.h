@@ -33,6 +33,9 @@ uint8_t *get_channel_lut(void);
 void midi_hook_default(uint8_t* in);
 void set_midi_hook(void(*fn)(uint8_t *in));
 static void handle_midi(uint8_t *msg);
+void set_bank(int bank);
+uint8_t get_bank();
+
 
 #ifdef __cplusplus
 }

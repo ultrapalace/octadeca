@@ -39,9 +39,9 @@ static const char* TAG = "wav_player";
 #define LOOPS_PER_BUFFER ( BYTES_PER_READ / DAC_BUFFER_SIZE_IN_BYTES )
 
 // #define NUM_BUFFERS 2    // debug
-// #define NUM_BUFFERS 16    //
+#define NUM_BUFFERS 16    //
 // #define NUM_BUFFERS 17 //
-#define NUM_BUFFERS 18 // 1.0.x
+// #define NUM_BUFFERS 18 // 1.0.x
 // #define NUM_BUFFERS 19
 // #define NUM_BUFFERS 20
 // #define NUM_BUFFERS 30
@@ -55,6 +55,8 @@ static const char* TAG = "wav_player";
 
 #define s15p16 int32_t
 #define u16p16 uint32_t
+
+extern struct bank_file_t current_bank;
 
 // from midi.c
 uint8_t channel_lut[16];
@@ -422,7 +424,11 @@ void IRAM_ATTR wav_player_task(void* pvParameters)
     {
       abort_note = false;
       // fetch the file
-      struct wav_lu_t new_wav = get_file_t_from_lookup_table(wav_player_event.voice, wav_player_event.note, wav_player_event.velocity);
+
+      uint8_t note = wav_player_event.note + current_bank.transpose;
+
+      struct wav_lu_t new_wav = get_file_t_from_lookup_table(current_bank.voice, note, wav_player_event.velocity);
+      new_wav.response_curve = current_bank.response_curve;
       // check that there is a wav file there
       if(new_wav.empty == 1)
       {
@@ -442,7 +448,6 @@ void IRAM_ATTR wav_player_task(void* pvParameters)
                 (bufs[i].wav_data.play_back_mode == PAUSE) ||
                 (bufs[i].wav_data.play_back_mode == PAUSE_LOOP) ||
                 (bufs[i].wav_data.play_back_mode == PAUSE_ASR)
-
               )
             )
             {

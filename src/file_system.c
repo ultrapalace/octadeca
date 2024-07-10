@@ -44,8 +44,12 @@
 #define WAV_LUT_BLOCKS_PER_VOICE BLOCKS_PER_VOICE
 #define WAV_LUT_SIZE_IN_BLOCKS ( NUM_VOICES * BLOCKS_PER_VOICE )
 
+#define BANK_CONFIG_START_BLOCK (WAV_LUT_START_BLOCK + WAV_LUT_SIZE_IN_BLOCKS)
+#define BANK_CONFIG_SIZE (NUM_BANKS * sizeof(struct bank_file_t))
+#define BANK_CONFIG_BLOCKS (BANK_CONFIG_SIZE / SECTOR_SIZE + (BANK_CONFIG_SIZE % SECTOR_SIZE !=0))
+
 #define NUM_RACK_DIRECTORY_ENTRIES 128
-#define RACK_DIRECTORY_START_BLOCK (WAV_LUT_START_BLOCK + WAV_LUT_SIZE_IN_BLOCKS)
+#define RACK_DIRECTORY_START_BLOCK (BANK_CONFIG_START_BLOCK + BANK_CONFIG_BLOCKS)
 #define RACK_DIRECTORY_SIZE (NUM_RACK_DIRECTORY_ENTRIES * sizeof(struct rack_file_t))
 #define RACK_DIRECTORY_BLOCKS (RACK_DIRECTORY_SIZE / SECTOR_SIZE + (RACK_DIRECTORY_SIZE % SECTOR_SIZE != 0))
 
@@ -64,8 +68,9 @@
 // july 10 / 2021
 // char waver_tag[METADATA_TAG_LENGTH] = "wvr_magic_13"; // v1.x.x 
 // char waver_tag[METADATA_TAG_LENGTH] = "wvr_magic_14"; // v2.x.x
-char waver_tag[METADATA_TAG_LENGTH] = "wvr_magic_15"; // v3.x.x
+// char waver_tag[METADATA_TAG_LENGTH] = "wvr_magic_15"; // v3.x.x
 // char waver_tag[METADATA_TAG_LENGTH] = "wvr_magic_16"; // v4.x.x
+char waver_tag[METADATA_TAG_LENGTH] = "wvr_magic_21"; // octadeca
 
 static const char* TAG = "file_system";
 
@@ -76,6 +81,7 @@ esp_err_t emmc_read(void *dst, size_t start_sector, size_t sector_count);
 struct metadata_t metadata;
 struct wav_lu_t **wav_lut;
 struct firmware_t *firmware_lut;
+struct bank_file_t *bank_lut;
 struct website_t *website_lut;
 struct rack_lu_t *rack_lut;
 struct pin_config_t *pin_config_lut;
@@ -114,6 +120,11 @@ void file_system_init(void)
         pin_config_lut = (struct pin_config_t *)ps_malloc(PIN_CONFIG_BLOCKS * SECTOR_SIZE);
         if(pin_config_lut == NULL){log_e("failed to alloc rack wav_lut");}
     }
+    if(bank_lut == NULL){
+        bank_lut = (struct bank_file_t *)ps_malloc(BANK_CONFIG_BLOCKS * SECTOR_SIZE);
+        if(bank_lut == NULL){log_e("failed to alloc bank_lut wav_lut");}
+    }
+
 
     int ret = try_read_metadata();
     while(!ret){
@@ -122,6 +133,7 @@ void file_system_init(void)
         init_firmware_lut();
         init_website_lut();
         init_rack_lut();
+        init_bank_lut();
         init_pin_config_lut();
         log_i("retrying lut_init()");
         ret = try_read_metadata();
@@ -130,6 +142,7 @@ void file_system_init(void)
     read_firmware_lut_from_disk();
     read_website_lut_from_disk();
     read_rack_lut_from_disk();
+    read_bank_lut_from_disk();
     read_pin_config_lut_from_disk();
 }
 
@@ -180,6 +193,11 @@ struct metadata_t *get_metadata(void){
     return(m);
 }
 
+struct bank_file_t *get_bank_lut(void){
+    struct bank_file_t *b = bank_lut;
+    return(b);
+}
+
 void set_global_volume(uint8_t vol)
 {
     metadata.global_volume = vol;
@@ -221,22 +239,6 @@ void init_metadata(void){
         .do_station_mode = 0,
         .station_ssid = "",
         .station_passphrase = "",
-        .voice_name_1 = "empty",
-        .voice_name_2 = "empty",
-        .voice_name_3 = "empty",
-        .voice_name_4 = "empty",
-        .voice_name_5 = "empty",
-        .voice_name_6 = "empty",
-        .voice_name_7 = "empty",
-        .voice_name_8 = "empty",
-        .voice_name_9 = "empty",
-        .voice_name_10 = "empty",
-        .voice_name_11 = "empty",
-        .voice_name_12 = "empty",
-        .voice_name_13 = "empty",
-        .voice_name_14 = "empty",
-        .voice_name_15 = "empty",
-        .voice_name_16 = "empty",
     };
     memcpy(new_metadata.tag, waver_tag, METADATA_TAG_LENGTH);
     write_metadata(new_metadata);
@@ -362,6 +364,26 @@ void init_firmware_lut(void){
     write_firmware_lut_to_disk();
 }
 
+void init_bank_lut(void){
+    ESP_LOGI(TAG, "start init_bank_lut");
+    char *empty_string = "";
+    struct bank_file_t *banks = (struct bank_file_t *)ps_malloc(BANK_CONFIG_BLOCKS * SECTOR_SIZE);
+    if(banks == NULL){ESP_LOGI(TAG, "failed to malloc banks");return;}
+    for(int i=0; i<NUM_BANKS; i++){
+        banks[i].channel = 0;
+        banks[i].pitchbend_range_down = 0;
+        banks[i].pitchbend_range_up = 0;
+        banks[i].polyphonic = 1;
+        banks[i].response_curve = 1;
+        banks[i].transpose = 0;
+        banks[i].voice = i;
+        bzero(banks[i].name, 24);
+    }
+    ESP_ERROR_CHECK(emmc_write( banks, BANK_CONFIG_START_BLOCK, BANK_CONFIG_BLOCKS ));
+    read_bank_lut_from_disk();
+    free(banks);
+}
+
 void write_firmware_lut_to_disk(void){
     // log_i("writting firmware wav_lut to disk");
     struct firmware_t *buf = (struct firmware_t*)ps_malloc(FIRMWARE_LUT_BLOCKS * SECTOR_SIZE);
@@ -405,6 +427,30 @@ void write_website_lut_to_disk(void){
     emmc_write(buf,WEBSITE_LUT_START_BLOCK,WEBSITE_LUT_BLOCKS);
     // log_i("wrote %u blocks of websites starting at block %u", WEBSITE_LUT_BLOCKS, WEBSITE_LUT_START_BLOCK);
     free(buf);
+}
+
+void read_bank_lut_from_disk(void)
+{
+    ESP_LOGI(TAG, "start read_bank_lut_from_disk BANK_CONFIG_BLOCKS=%d", BANK_CONFIG_BLOCKS);
+    struct bank_file_t *bank_buf = (struct bank_file_t *)ps_malloc(BANK_CONFIG_BLOCKS * SECTOR_SIZE);
+    vTaskDelay(100);
+    ESP_LOGI(TAG, "allocated");
+    if(bank_buf == NULL){
+        log_e("failed to alloc bank_file_t buf for reading");
+    }
+    emmc_read(bank_buf, BANK_CONFIG_START_BLOCK, BANK_CONFIG_BLOCKS);
+    for(int i=0; i<NUM_BANKS; i++ ){
+        bank_lut[i].channel = bank_buf[i].channel;
+        bank_lut[i].response_curve = bank_buf[i].response_curve;
+        bank_lut[i].pitchbend_range_down = bank_buf[i].pitchbend_range_down;
+        bank_lut[i].pitchbend_range_up = bank_buf[i].pitchbend_range_up;
+        bank_lut[i].transpose = bank_buf[i].transpose;
+        bank_lut[i].polyphonic = bank_buf[i].polyphonic;
+        bank_lut[i].voice = bank_buf[i].voice;
+        strncpy(bank_lut[i].name, bank_buf[i].name, 23);
+        ESP_LOGI(TAG, "load bank %d name: %s", i, bank_lut[i].name);
+    }
+    free(bank_buf);
 }
 
 void read_wav_lut_from_disk(void)
@@ -841,9 +887,11 @@ char *print_config_json()
     cJSON *j_metadata = cJSON_AddObjectToObject(j_RESPONSE_ROOT,"metadata");
     cJSON *j_firmwares = cJSON_AddArrayToObject(j_RESPONSE_ROOT,"firmwares");
     cJSON *j_pin_config = cJSON_AddArrayToObject(j_RESPONSE_ROOT,"pinConfig");
+    cJSON *j_banks = cJSON_AddArrayToObject(j_RESPONSE_ROOT,"banks");
     add_metadata_json(j_metadata);
     add_firmware_json(j_firmwares);
     add_pin_config_json(j_pin_config);
+    add_banks_json(j_banks);
 
     char* out = cJSON_PrintUnformatted(j_RESPONSE_ROOT);
     feedLoopWDT();
@@ -953,22 +1001,22 @@ void add_metadata_json(cJSON * RESPONSE_ROOT){
     cJSON_AddNumberToObject(RESPONSE_ROOT,"doStationMode",metadata.do_station_mode);
     cJSON_AddStringToObject(RESPONSE_ROOT,"stationWifiNetworkName",metadata.station_ssid);
     cJSON_AddStringToObject(RESPONSE_ROOT,"stationWifiNetworkPassword",metadata.station_passphrase);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName1",metadata.voice_name_1);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName2",metadata.voice_name_2);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName3",metadata.voice_name_3);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName4",metadata.voice_name_4);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName5",metadata.voice_name_5);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName6",metadata.voice_name_6);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName7",metadata.voice_name_7);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName8",metadata.voice_name_8);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName9",metadata.voice_name_9);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName10",metadata.voice_name_10);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName11",metadata.voice_name_11);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName12",metadata.voice_name_12);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName13",metadata.voice_name_13);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName14",metadata.voice_name_14);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName15",metadata.voice_name_15);
-    cJSON_AddStringToObject(RESPONSE_ROOT,"voiceName16",metadata.voice_name_16);
+}
+
+void add_banks_json(cJSON *RESPONSE_ROOT){
+    for(int i=0;i<NUM_BANKS;i++)
+    {
+        cJSON *bank = cJSON_CreateObject();
+        cJSON_AddNumberToObject(bank,"midiChannel",bank_lut[i].channel);
+        cJSON_AddNumberToObject(bank,"pitchbendRangeDown",bank_lut[i].pitchbend_range_down);
+        cJSON_AddNumberToObject(bank,"pitchbendRangeUp",bank_lut[i].pitchbend_range_up);
+        cJSON_AddNumberToObject(bank,"polyphonic",bank_lut[i].polyphonic);
+        cJSON_AddNumberToObject(bank,"responseCurve",bank_lut[i].response_curve);
+        cJSON_AddNumberToObject(bank,"transpose",bank_lut[i].transpose);
+        cJSON_AddNumberToObject(bank,"voice",bank_lut[i].voice);
+        cJSON_AddStringToObject(bank,"name", bank_lut[i].name);
+        cJSON_AddItemToArray(RESPONSE_ROOT, bank);
+    }
 }
 
 void add_pin_config_json(cJSON *RESPONSE_ROOT){
@@ -1148,6 +1196,52 @@ size_t get_website_chunk(size_t start_block, size_t toWrite, uint8_t *buffer, si
     return will_write;
 }
 
+void updateBankConfig(char *json){
+
+    feedLoopWDT();
+    const cJSON *bank_json = cJSON_Parse(json);
+    if(bank_json == NULL){
+        log_e("banks json too big :(");
+    }
+    feedLoopWDT();
+    cJSON *bank = NULL;
+    struct bank_file_t *bank_data = (struct bank_file_t*)ps_malloc(BANK_CONFIG_BLOCKS * SECTOR_SIZE);
+    if(bank_data==NULL){log_e("not enough ram to alloc bank_data");}
+    ESP_ERROR_CHECK(emmc_read(bank_data, BANK_CONFIG_START_BLOCK, BANK_CONFIG_BLOCKS));
+    int bank_num = 0;
+    cJSON_ArrayForEach(bank, bank_json){
+        feedLoopWDT();
+        strncpy(bank_data[bank_num].name, cJSON_GetObjectItemCaseSensitive(bank, "name")->valuestring, 23);
+        ESP_LOGI(TAG, "bank %d name:%s", bank_num,  bank_data[bank_num].name);
+        bank_data[bank_num].channel = cJSON_GetObjectItemCaseSensitive(bank, "midiChannel")->valueint;
+        bank_data[bank_num].voice = cJSON_GetObjectItemCaseSensitive(bank, "voice")->valueint;
+        bank_data[bank_num].pitchbend_range_down = cJSON_GetObjectItemCaseSensitive(bank, "pitchbendRangeDown")->valueint;
+        bank_data[bank_num].pitchbend_range_up = cJSON_GetObjectItemCaseSensitive(bank, "pitchbendRangeUp")->valueint;
+        bank_data[bank_num].polyphonic = cJSON_GetObjectItemCaseSensitive(bank, "polyphonic")->valueint;
+        bank_data[bank_num].response_curve = cJSON_GetObjectItemCaseSensitive(bank, "responseCurve")->valueint;
+        bank_data[bank_num].transpose = cJSON_GetObjectItemCaseSensitive(bank, "transpose")->valueint;
+        bank_num++;
+
+        // bzero(bank_lut[bank_num].name, 24);
+        // strncpy(bank_lut[bank_num].name, bank_data[bank_num].name, 23);
+        // bank_lut[bank_num].channel = bank_data[bank_num].channel;
+        // bank_lut[bank_num].voice = bank_data[bank_num].voice;
+        // bank_lut[bank_num].pitchbend_range_down = bank_data[bank_num].pitchbend_range_down;
+        // bank_lut[bank_num].pitchbend_range_up = bank_data[bank_num].pitchbend_range_up;
+        // bank_lut[bank_num].polyphonic = bank_data[bank_num].polyphonic;
+        // bank_lut[bank_num].response_curve = bank_data[bank_num].response_curve;
+        // bank_lut[bank_num].transpose = bank_data[bank_num].transpose;
+    }
+    feedLoopWDT();
+    ESP_ERROR_CHECK(emmc_write(bank_data, BANK_CONFIG_START_BLOCK, BANK_CONFIG_BLOCKS));
+    feedLoopWDT();
+    read_bank_lut_from_disk();
+    feedLoopWDT();
+    cJSON_Delete(bank);
+    cJSON_Delete(bank_json);
+    free(bank_data);
+}
+
 void updateSingleVoiceConfig(char *json, int num_voice){
     //todo only read/write the rack_lut from eMMC if needed
     feedLoopWDT();
@@ -1165,7 +1259,7 @@ void updateSingleVoiceConfig(char *json, int num_voice){
     struct rack_file_t *rack_data = NULL;
     bool should_write_rack_lut = false;
     int num_note = 0;
-    cJSON_ArrayForEach(note,vc_json)
+    cJSON_ArrayForEach(note, vc_json)
     {
         feedLoopWDT();
         voice_data[num_note].play_back_mode = cJSON_GetObjectItemCaseSensitive(note, "mode")->valueint;
@@ -1371,22 +1465,6 @@ void updateMetadata(cJSON *config){
     memcpy(&metadata.station_passphrase,cJSON_GetObjectItemCaseSensitive(json, "stationWifiNetworkPassword")->valuestring,20);
     memcpy(&metadata.ssid,cJSON_GetObjectItemCaseSensitive(json, "wifiNetworkName")->valuestring,20);
     memcpy(&metadata.passphrase,cJSON_GetObjectItemCaseSensitive(json, "wifiNetworkPassword")->valuestring,20);
-    memcpy(&metadata.voice_name_1, cJSON_GetObjectItemCaseSensitive(json, "voiceName1")->valuestring, 25);
-    memcpy(&metadata.voice_name_2, cJSON_GetObjectItemCaseSensitive(json, "voiceName2")->valuestring, 25);
-    memcpy(&metadata.voice_name_3, cJSON_GetObjectItemCaseSensitive(json, "voiceName3")->valuestring, 25);
-    memcpy(&metadata.voice_name_4, cJSON_GetObjectItemCaseSensitive(json, "voiceName4")->valuestring, 25);
-    memcpy(&metadata.voice_name_5, cJSON_GetObjectItemCaseSensitive(json, "voiceName5")->valuestring, 25);
-    memcpy(&metadata.voice_name_6, cJSON_GetObjectItemCaseSensitive(json, "voiceName6")->valuestring, 25);
-    memcpy(&metadata.voice_name_7, cJSON_GetObjectItemCaseSensitive(json, "voiceName7")->valuestring, 25);
-    memcpy(&metadata.voice_name_8, cJSON_GetObjectItemCaseSensitive(json, "voiceName8")->valuestring, 25);
-    memcpy(&metadata.voice_name_9, cJSON_GetObjectItemCaseSensitive(json, "voiceName9")->valuestring, 25);
-    memcpy(&metadata.voice_name_10, cJSON_GetObjectItemCaseSensitive(json, "voiceName10")->valuestring, 25);
-    memcpy(&metadata.voice_name_11, cJSON_GetObjectItemCaseSensitive(json, "voiceName11")->valuestring, 25);
-    memcpy(&metadata.voice_name_12, cJSON_GetObjectItemCaseSensitive(json, "voiceName12")->valuestring, 25);
-    memcpy(&metadata.voice_name_13, cJSON_GetObjectItemCaseSensitive(json, "voiceName13")->valuestring, 25);
-    memcpy(&metadata.voice_name_14, cJSON_GetObjectItemCaseSensitive(json, "voiceName14")->valuestring, 25);
-    memcpy(&metadata.voice_name_15, cJSON_GetObjectItemCaseSensitive(json, "voiceName15")->valuestring, 25);
-    memcpy(&metadata.voice_name_16, cJSON_GetObjectItemCaseSensitive(json, "voiceName16")->valuestring, 25);
     write_metadata(metadata);
     wlog_i("gv:%d scsp:%d rmsp:%d wso:%d wlv:%d wfp:%d mdc%d",
         metadata.global_volume,
@@ -1456,6 +1534,7 @@ void reset_emmc(void)
     init_firmware_lut();
     init_website_lut();
     init_rack_lut();
+    init_bank_lut();
     init_pin_config_lut();
 }
 

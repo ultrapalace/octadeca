@@ -151,6 +151,31 @@ void handleUpdate(AsyncWebServerRequest *request, uint8_t *data, size_t len, siz
   }
 }
 
+uint8_t *bank_config_json = NULL;
+
+void handleUpdateBankConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+  if(index==0){
+    //start
+    bank_config_json = (uint8_t*)ps_malloc(total + 1);
+    if(!bank_config_json){
+      log_i("failed to malloc for json");
+    }
+  }
+  //always
+  for(int i=0;i<len;i++){
+    bank_config_json[i + index] = data[i];
+  }
+  feedLoopWDT();
+  if(index + len == total){
+    //done
+    feedLoopWDT();
+    log_i("bank_config_json:");
+    log_i("%s", bank_config_json);
+    updateBankConfig((char *)bank_config_json);
+    free(bank_config_json);
+  }
+}
+
 uint8_t *voice_config_json = NULL;
 
 void handleUpdateSingleVoiceConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
@@ -738,8 +763,8 @@ void server_begin() {
   // WiFi.softAPConfig(IP, gateway, NMask);
 
   IPAddress myIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(myIP);
+  log_i("AP IP address: %s", myIP.toString());
+  // Serial.println(myIP);
 
   // set WiFi power
   log_i("metadata wifiPower is %d",metadata->wifi_power);
@@ -749,8 +774,8 @@ void server_begin() {
   log_i("wifi power is %d", power);
 
   if(metadata->do_station_mode == 1){
+    log_e("starting station");
     try_log_on_network();
-    // log_e("starting station");
     // WiFi.begin(metadata->station_ssid, metadata->station_passphrase);
     // int retries = 0;
     // while (WiFi.status() != WL_CONNECTED) {
@@ -871,6 +896,14 @@ void server_begin() {
     [](AsyncWebServerRequest * request){request->send(204);},
     NULL,
     handleUpdateSingleVoiceConfig
+  );
+
+  server.on(
+    "/updateBankConfig",
+    HTTP_POST,
+    [](AsyncWebServerRequest * request){request->send(204);},
+    NULL,
+    handleUpdateBankConfig
   );
 
   server.on(

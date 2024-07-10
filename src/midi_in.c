@@ -22,6 +22,8 @@
 
 static const char *TAG = "midi";
 
+extern struct bank_file_t *bank_lut;
+
 // from server.cpp
 void sendWSMsg(char* msg);
 
@@ -39,6 +41,18 @@ uint8_t *web_msg;
 struct metadata_t metadata;
 
 void(*midi_hook)(uint8_t *in);
+
+struct bank_file_t current_bank = {0};
+int current_bank_index = 0;
+
+void set_bank(int bank){
+    current_bank = bank_lut[bank];
+    current_bank_index = bank;
+}
+
+uint8_t get_bank(){
+    return current_bank_index;
+}
 
 void init_gpio()
 {
@@ -123,7 +137,7 @@ uint16_t channel_pitch_bend[16];
 
 uint8_t *get_channel_lut(void)
 {
-    return &channel_lut[0];
+    return channel_lut;
 }
 
 static void read_uart_task()

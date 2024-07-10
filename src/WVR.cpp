@@ -59,6 +59,13 @@ void WVR::setGlobalVolume(uint8_t volume)
     set_global_volume(volume);
 }
 
+void WVR::setGlobalVolumePercent(uint8_t volume)
+{
+    float vol_f = (float)volume * 1.27;
+    uint8_t o_volume = (uint8_t)(vol_f < 0.0 ? 0 : round(vol_f));
+    set_global_volume(o_volume);
+}
+
 uint8_t WVR::getGlobalVolume(void)
 {
     return get_global_volume();
@@ -104,3 +111,17 @@ void WVR::setVoice(int channel, int voice)
     get_channel_lut()[channel] = (voice & 0b00001111);
 }
 
+char *WVR::getBankName(int bank)
+{
+    return get_bank_lut()[bank].name;
+}
+
+uint8_t WVR::getBank()
+{
+    return get_bank();
+}
+
+void WVR::setBank(int bank)
+{
+    set_bank(bank);
+}

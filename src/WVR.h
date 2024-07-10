@@ -19,6 +19,7 @@ class WVR {
         void wifiOn(void);
         void toggleWifi(void);
         void setGlobalVolume(uint8_t volume);
+        void setGlobalVolumePercent(uint8_t volume);
         uint8_t getGlobalVolume(void);
         void mute(void);
         void unmute(void);
@@ -28,6 +29,9 @@ class WVR {
         void resetPin(int pin);
         uint8_t getVoice(int channel);
         void setVoice(int channel, int voice);
+        uint8_t getBank();
+        void setBank(int bank);
+        char *getBankName(int bank);
         bool wifiIsOn;
         bool useFTDI;
         bool useUsbMidi;
