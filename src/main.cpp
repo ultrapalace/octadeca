@@ -15,6 +15,7 @@
 #include <gpio.h>
 
 #include <U8g2lib.h>
+#include "bitmaps.h"
 
 // #define RGB D9
 #define RGB D5
@@ -33,7 +34,7 @@ WVR wvr;
 
 U8G2_SH1106_128X64_NONAME_F_4W_SW_SPI u8g2(U8G2_R2, /* clock=*/ SCK, /* data=*/ SDA, /* cs=*/ CS, /* dc=*/ DC,  /* reset=*/ RST);
 
-// Preferences preferences;
+Preferences preferences;
 
 const char* prefs_key = "wvr";
 
@@ -106,9 +107,9 @@ static void rgb_unflasher(void *arg){
 static void rgb_flasher(void *arg){
   while(1){
     uint8_t evt;
-    if(xQueueReceive(rgb_flasher_h, &evt, portMAX_DELAY)){
+    if(xQueueReceive(rgb_flasher_h, &evt, 0)){
       if(evt == RGB_EVT_MIDI){
-        rgb_set_led(1, 0x01, 0x01, 0x01);
+        rgb_set_led(1, 0x10, 0x10, 0x10);
         last_midi = xTaskGetTickCount();
       } else if(evt == RGB_EVT_PRESS_LEFT){
         rgb_set_led(2, 0x66, 0x44, 0x11);
@@ -121,15 +122,44 @@ static void rgb_flasher(void *arg){
         last_right = xTaskGetTickCount();
       }
     }
+    if((last_midi != 0) && (xTaskGetTickCount() > (last_midi + FLASHER_PERIOD))){
+        rgb_set_led(1, 0, 0, 0);
+        last_midi = 0;
+    }
+    if((last_left != 0) && (xTaskGetTickCount() > (last_left + FLASHER_PERIOD))){
+        rgb_set_led(2, 0, 0, 0);
+        last_left = 0;
+    }
+    if((last_center != 0) && (xTaskGetTickCount() > (last_center + FLASHER_PERIOD))){
+        rgb_set_led(1, 0, 0, 0);
+        last_center = 0;
+    }
+    if((last_right != 0) && (xTaskGetTickCount() > (last_right + FLASHER_PERIOD))){
+        rgb_set_led(0, 0, 0, 0);
+        last_right = 0;
+    }
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+
   }
 }
 
-/*
-
-SETUP THE BUTTON LIBRARY SAVED IN BOOKMARKS to detect held presses and long presses
-https://github.com/rwmingis/InterruptButton
-
-*/
+void splash (void)
+{
+  for(char frames=0;frames<28;frames++)
+  {
+    u8g2.clearBuffer();
+    u8g2.drawXBMP(39, 7, 50, 50, epd_bitmap_mixer[frames%28]);
+    u8g2.sendBuffer();
+    delay(10);
+  }
+   u8g2.clearBuffer();
+   u8g2.drawXBMP(0, 0, 128, 64, epd_bitmap_ultrapalace);
+   u8g2.sendBuffer();
+   delay(1000);
+   u8g2.clearBuffer();
+   u8g2.sendBuffer();
+   delay(250);
+}
 
 void draw_screen(void)
 {
@@ -138,51 +168,62 @@ void draw_screen(void)
 
   if(screen == 0) // home screen
   {
+    u8g2.setFont(u8g2_font_profont15_tr);
+
     // voice num
     uint8_t voice = wvr.getBank();
     char program_number[12];
     sprintf(program_number, "bank #%d", voice + 1);
-    u8g2.drawStr(5, 15, program_number);
+    u8g2.drawStr(4, 18, program_number);
 
     // voice name
-    u8g2.drawStr(5, 27, wvr.getBankName(voice));
+    u8g2.drawStr(4, 36, wvr.getBankName(voice));
 
     // volume number
-    char volume_str[10];
-    sprintf(volume_str, "%d", volume);
-    u8g2.drawStr(5, 53, volume_str);
+    // char volume_str[10];
+    // sprintf(volume_str, "%d", volume);
+    // u8g2.drawStr(5, 53, volume_str);
 
     // volume bar
     float vol_f = (float) volume / 100.0;
-    float width_f = 90.0 * vol_f;
+    float width_f = 91.0 * vol_f;
     uint8_t width = (uint8_t)width_f;
-    u8g2.drawBox(30, 45, width, 10);
+    u8g2.drawFrame(5, 47, 91, 12);
+    u8g2.drawBox(5, 47, width, 12);
+
+    u8g2.setFont(u8g2_font_profont10_tr);
 
     // midi channel
     char channel_string[3];
     sprintf(channel_string, "%d", channel + 1);
-    u8g2.drawStr(110, 34, channel_string);
+    u8g2.drawStr(105, 51, "chan");
+    u8g2.drawStr(110, 60, channel_string);
 
     // wifi state
-    u8g2.drawStr(110, 15, wvr.wifiIsOn ? "W" : "---");
-
+    u8g2.drawStr(105, 9, "wifi");
+    u8g2.drawStr(108, 17, wvr.wifiIsOn ? "on" : "off");
 
     // selection box
     if(item == 0) // voice
     {
-      u8g2.drawFrame(1, 1, 105, 32);
+      u8g2.drawLine(0, 0, 101, 0);
+      u8g2.drawLine(0, 0, 0, 42);
+      u8g2.drawLine(0, 42, 127, 42);
+      u8g2.drawLine(127, 20, 127, 42);
+      u8g2.drawLine(101, 20, 127, 20);
+      u8g2.drawLine(101, 0, 101, 20);
     }
     else if(item == 1) // volume
     {
-      u8g2.drawFrame(1, 43, 127, 15);
+      u8g2.drawFrame(0, 42, 102, 22);
     }
-    else if(item == 2) // volume
+    else if(item == 2) // wifi
     {
-      u8g2.drawFrame(105, 1 ,22, 20);
+      u8g2.drawFrame(101, 0, 27, 21);
     }
-    else if(item == 3) // volume
+    else if(item == 3) // chan
     {
-      u8g2.drawFrame(105, 21, 22, 20);
+      u8g2.drawFrame(101, 42, 27, 22);
     }
   }
   else if (screen == 1) // wifi
@@ -228,12 +269,17 @@ void handleLeft(void){
     }
     else if(item == 2)
     {
+      should_update_wifi_on = true;
       wvr.toggleWifi();
+      screen = 1;
     }
     else if(item == 3)
     {
       channel -= (channel > 0);
     }
+  } else if(screen == 1){
+      should_update_wifi_on = true;
+      wvr.toggleWifi();
   }
   xQueueSendToBack(rgb_flasher_h, &press_left_evt, 0);
   draw_screen();
@@ -244,6 +290,8 @@ void handleCenter(void){
   {
     item++;
     item = item > 3 ? 0 : item;
+  } else if(screen == 1){
+    screen = 0;
   }
   xQueueSendToBack(rgb_flasher_h, &press_center_evt, 0);
   draw_screen();
@@ -270,16 +318,19 @@ void handleRight(void){
     else if(item == 2) // wifi
     {
       wvr.toggleWifi();
+      should_update_wifi_on = true;
+      screen = 1;
     }
     else if(item == 3) // channel
     {
       channel += (channel < 15);
     }
   }
-  // else if(screen == 1) // settings screen
-  // {
-  //   item += (item < (NUM_ITEMS_SETTINGS - 1));
-  // }
+  else if(screen == 1) // wifi screen
+  {
+      should_update_wifi_on = true;
+      wvr.toggleWifi();
+  }
   xQueueSendToBack(rgb_flasher_h, &press_right_evt, 0);
   draw_screen();
 }
@@ -292,34 +343,30 @@ void handleLongPress(void){
 void onMidi(uint8_t *msg){
   uint8_t code = (msg[0] >> 4) & 0b00001111;
   if(code == MIDI_NOTE_ON){
-    xQueueSendToBack(rgb_flasher_h, &note_on_evt, 0);
+    xQueueSendToBack(rgb_flasher_h, &note_on_evt, portMAX_DELAY);
   }
 }
 
 void setup() {
-  // preferences.begin(prefs_key, false);
+  preferences.begin(prefs_key);
 
-  // prefs_wifi_on = preferences.getBool(prefs_wifi_on_key, false);
-  // prefs_bank = preferences.getInt(prefs_bank_key, 0);
-  // prefs_volume = preferences.getInt(prefs_volume_key, 100);
+  prefs_wifi_on = preferences.getBool(prefs_wifi_on_key, false);
+  prefs_bank = preferences.getInt(prefs_bank_key, 0);
+  prefs_volume = preferences.getInt(prefs_volume_key, 100);
 
-  // log_i("main", "\nprefs\nwifi-on: %s\nbank: %d\nvolume: %d", prefs_wifi_on?"true":"false", prefs_bank, prefs_volume);
 
   rgb_flasher_h = xQueueCreate(1024, 1);
   wvr.useFTDI = true;
   wvr.useUsbMidi = true;
   wvr.begin();
+  log_i("\nprefs\nwifi-on: %s\nbank: %d\nvolume: %d", prefs_wifi_on?"true":"false", prefs_bank, prefs_volume);
   // wvr.wifiOn();
 
-  // if(prefs_wifi_on){
-  //   wvr.wifiOn();
-  //   wvr.wifiIsOn = true;
-  //   should_update_wifi_on = true;
-  // } else {
-  //   wvr.wifiOff();
-  //   wvr.wifiIsOn = false;
-  //   should_update_wifi_on = true;
-  // }
+  if(prefs_wifi_on){
+    wvr.wifiOn();
+  } else {
+    wvr.wifiOff();
+  }
   volume = prefs_volume;
   wvr.setGlobalVolumePercent(volume);
   wvr.setBank(prefs_bank);
@@ -344,6 +391,7 @@ void setup() {
   rgb_init(RGB);
 
   u8g2.begin();
+  splash();
   draw_screen();
 
   // switches
@@ -408,23 +456,24 @@ void setup() {
   rgb_set_led(1, 0, 0, 0);
   rgb_set_led(2, 0, 0, 0);
 
-  xTaskCreatePinnedToCore(rgb_flasher, "rgb_flasher", 1024, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(rgb_unflasher, "rgb_unflasher", 1024 * 2, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(rgb_flasher, "rgb_flasher", 1024 * 2, NULL, 1, NULL, 1);
+  // xTaskCreatePinnedToCore(rgb_unflasher, "rgb_unflasher", 1024 * 2, NULL, 1, NULL, 1);
 }
 
 void loop() {
   // vTaskDelete(NULL);
-    // if(should_update_wifi_on){
-    //   should_update_wifi_on = false;
-    //   preferences.putBool(prefs_wifi_on_key, wvr.wifiIsOn);
-    // }
-    // if(should_update_bank){
-    //   should_update_bank = false;
-    //   preferences.putInt(prefs_bank_key, wvr.getBank());
-    // }
-    // if(should_update_volume){
-    //   should_update_volume = false;
-    //   preferences.putInt(prefs_volume_key, volume);
-    // }
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
+  if(should_update_wifi_on){
+    should_update_wifi_on = false;
+    preferences.putBool(prefs_wifi_on_key, wvr.wifiIsOn);
+    log_i("updated wifi is on: %s", prefs_wifi_on?"true":"false");
+  }
+  if(should_update_bank){
+    should_update_bank = false;
+    preferences.putInt(prefs_bank_key, wvr.getBank());
+  }
+  if(should_update_volume){
+    should_update_volume = false;
+    preferences.putInt(prefs_volume_key, volume);
+  }
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
