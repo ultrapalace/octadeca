@@ -42,11 +42,11 @@ struct metadata_t metadata;
 
 void(*midi_hook)(uint8_t *in);
 
-struct bank_file_t current_bank = {0};
+struct bank_file_t *current_bank;
 int current_bank_index = 0;
 
 void set_bank(int bank){
-    current_bank = bank_lut[bank];
+    current_bank = &bank_lut[bank];
     current_bank_index = bank;
 }
 
@@ -315,9 +315,11 @@ static void handle_midi(uint8_t *msg)
         uint8_t channel = msg[0] & 0b00001111;
         // log_i("chan %d listening on %d", channel, metadata.midi_channel);
         if(
-            (metadata.midi_channel != 0) && // WVR is not in OMNI mode
+            (current_bank->channel != 0) && // Octadeca is not in OMNI mode
+            // (metadata.midi_channel != 0) && // WVR is not in OMNI mode
             // have to add one to channel here, because midi data 0 means midi channel 1 (eye roll)
-            (metadata.midi_channel != (channel + 1)) // this is not the channel WVR is listening on
+            (current_bank->channel != (channel + 1)) // this is not the channel Octadeca is listening on
+            // (metadata.midi_channel != (channel + 1)) // this is not the channel WVR is listening on
         )
         {
             msg = NULL;

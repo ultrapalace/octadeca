@@ -144,6 +144,7 @@ void file_system_init(void)
     read_rack_lut_from_disk();
     read_bank_lut_from_disk();
     read_pin_config_lut_from_disk();
+    set_bank(0);
 }
 
 void alloc_luts(void){
@@ -449,6 +450,13 @@ void read_bank_lut_from_disk(void)
         bank_lut[i].voice = bank_buf[i].voice;
         strncpy(bank_lut[i].name, bank_buf[i].name, 23);
         ESP_LOGI(TAG, "load bank %d name: %s", i, bank_lut[i].name);
+        ESP_LOGI(TAG, "channel: %d", bank_buf[i].channel);
+        ESP_LOGI(TAG, "response_curve: %d", bank_buf[i].response_curve);
+        ESP_LOGI(TAG, "pitchbend_range_down: %d", bank_buf[i].pitchbend_range_down);
+        ESP_LOGI(TAG, "pitchbend_range_up: %d", bank_buf[i].pitchbend_range_up);
+        ESP_LOGI(TAG, "transpose: %d", bank_buf[i].transpose);
+        ESP_LOGI(TAG, "polyphonic: %d", bank_buf[i].polyphonic);
+        ESP_LOGI(TAG, "voice: %d", bank_buf[i].voice);
     }
     free(bank_buf);
 }

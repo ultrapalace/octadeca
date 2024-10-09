@@ -56,7 +56,7 @@ static const char* TAG = "wav_player";
 #define s15p16 int32_t
 #define u16p16 uint32_t
 
-extern struct bank_file_t current_bank;
+extern struct bank_file_t *current_bank;
 
 // from midi.c
 uint8_t channel_lut[16];
@@ -240,8 +240,7 @@ void update_pitch_bends(void)
   {
     uint16_t pitch_bend = channel_pitch_bend[i]; // 14 bit
     s15p16 bend = (pitch_bend << 16) / 8192.0 - ( 1 << 16);
-    // s15p16 semitones = bend >= 0 ? 12 * bend : 12 * bend;
-    s15p16 semitones = bend >= 0 ? metadata.pitch_bend_semitones_up * bend : metadata.pitch_bend_semitones_down * bend;
+    s15p16 semitones = bend >= 0 ? current_bank->pitchbend_range_up * bend : current_bank->pitchbend_range_down * bend;
     s15p16 pitch_factor = fxexp2_s15p16(semitones / 12);
     channel_pitch_bend_factor[i] = pitch_factor;
   }
@@ -425,10 +424,16 @@ void IRAM_ATTR wav_player_task(void* pvParameters)
       abort_note = false;
       // fetch the file
 
-      uint8_t note = wav_player_event.note + current_bank.transpose;
+      uint8_t note = wav_player_event.note + current_bank->transpose;
 
-      struct wav_lu_t new_wav = get_file_t_from_lookup_table(current_bank.voice, note, wav_player_event.velocity);
-      new_wav.response_curve = current_bank.response_curve;
+      // make sure it picks the right rack for fixed
+      if(current_bank->response_curve == RESPONSE_FIXED){
+        wav_player_event.velocity = 127;
+      }
+
+      struct wav_lu_t new_wav = get_file_t_from_lookup_table(current_bank->voice, note, wav_player_event.velocity);
+      new_wav.response_curve = current_bank->response_curve;
+
       // check that there is a wav file there
       if(new_wav.empty == 1)
       {
@@ -534,13 +539,23 @@ void IRAM_ATTR wav_player_task(void* pvParameters)
       }
 
       // check mute groups
-      if(wav_player_event.code == MIDI_NOTE_ON && !abort_note && new_wav.mute_group > 0)
+      if(
+        wav_player_event.code == MIDI_NOTE_ON && 
+        !abort_note && 
+        (
+          new_wav.mute_group > 0 ||
+          current_bank->polyphonic == false
+        )
+      )
       {
         for(int8_t i=0; i<NUM_BUFFERS; i++)
         {
           if(
             (bufs[i].free == 0) &&
-            (bufs[i].wav_data.mute_group == new_wav.mute_group)
+            (
+              bufs[i].wav_data.mute_group == new_wav.mute_group ||
+              current_bank->polyphonic == false
+            )
           )
           {
             bufs[i].fade = FADE_OUT;

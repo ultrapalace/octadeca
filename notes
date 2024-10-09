@@ -1,6 +1,2 @@
-features:
-    save volume, bank, and wifi state
-
-screen features:
-    wifi on/off
-    channel
+CURRENT ISSUES:
+    1. bank to voice mapping is buggy, especially with delete
